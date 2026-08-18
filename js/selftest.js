@@ -58,6 +58,7 @@
       frame: { x: frameRect.x, y: frameRect.y, w: frameRect.width, h: frameRect.height },
       slogan: { x: sloganRect.x, y: sloganRect.y, w: sloganRect.width, h: sloganRect.height },
       toy: { cx: gs.cx, cy: gs.cy, topY: gs.topY, stickLen: gs.stickLen, bladeR: gs.bladeR, hubRatio: gs.topY / canvasRect.height, gripRatio: gs.cy / canvasRect.height },
+      state: { w: +gs.w.toFixed(2), rpm: Math.round(gs.rpm), g: +gs.g.toFixed(3) },
     };
     pre.textContent = JSON.stringify(layout);
     return;
@@ -217,17 +218,21 @@
         pointerId: 7, pointerType: "touch", clientX: x, clientY: y, bubbles: true, cancelable: true,
       }));
       fire("pointerdown", cx + r, cy);
+      let maxW = 0, maxAngVel = 0;
       for (let i = 1; i <= 100; i++) {
         const a = (i / 100) * Math.PI * 2 * 4;   // 画 4 圈
         fire("pointermove", cx + Math.cos(a) * r, cy + Math.sin(a) * r);
         dbg.tick(0.016);                          // 手动驱动一帧（自检模式无 rAF）
+        const stNow = dbg.getState();
+        maxW = Math.max(maxW, Math.abs(stNow.w));
+        maxAngVel = Math.max(maxAngVel, Math.abs(stNow.angVel));
         await sleep(16);
       }
       fire("pointerup", cx + r, cy);
       for (let i = 0; i < 14; i++) { dbg.tick(0.016); await sleep(16); }
       const st = dbg.getState();
-      ok("synthetic-rub-spins", Math.abs(st.w) > 40, `合成画圈后 ω=${st.w.toFixed(1)} rad/s = ${Math.round(st.rpm)} RPM`);
-      out.interaction = { w: +st.w.toFixed(1), rpm: Math.round(st.rpm) };
+      ok("synthetic-rub-spins", Math.abs(st.w) > 40, `合成画圈后 ω=${st.w.toFixed(1)} rad/s = ${Math.round(st.rpm)} RPM（途中峰值 ω=${maxW.toFixed(1)}，搓动角速度峰值=${maxAngVel.toFixed(1)}）`);
+      out.interaction = { w: +st.w.toFixed(1), rpm: Math.round(st.rpm), maxW: +maxW.toFixed(1), maxAngVel: +maxAngVel.toFixed(1) };
       // 强度进度条：加长 + 填充百分比跟随强度
       const fill = document.getElementById("buzz-meter");
       const track = fill.parentElement;
@@ -236,6 +241,12 @@
       const expectedPct = Math.round(buzzLevel(Math.abs(st.w)) * 100);
       const actualPct = parseFloat(fill.style.width) || 0;
       ok("meter-follows", Math.abs(actualPct - expectedPct) <= 2, `填充=${actualPct}% 期望≈${expectedPct}%（随强度实时填充）`);
+      // 随意把玩也会实时写入最佳纪录（此前纪录一直为空）
+      const recRpmText = document.getElementById("rec-rpm").textContent;
+      const recBuzzText = document.getElementById("rec-buzz").textContent;
+      const peakRpm = Math.round(rpmFromSpin(Math.abs(st.w)));
+      ok("freeplay-records", recRpmText.indexOf(String(peakRpm)) >= 0 || recRpmText !== "--",
+        `自由模式纪录已更新：最高转速=${recRpmText}（本次峰值 ${peakRpm}）`);
       report();
     } else {
       ok("synthetic-rub-spins", false, "缺少 __ZZL_DEBUG__ 钩子");

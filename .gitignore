@@ -1,0 +1,6 @@
+# 无头验证产物（截图/自检 dump）
+out/
+
+# 系统文件
+Thumbs.db
+.DS_Store

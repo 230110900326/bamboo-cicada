@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>竹知了 · 传统竹蝉仿真</title>
+<meta name="description" content="中国传统竹制玩具「竹知了」仿真网页游戏：画圈搓动竹签让竹片高速旋转，WebAudio 实时合成蝉鸣，转速实时驱动音调与响度。">
+<script>
+  // 全局错误捕获（无头验证时用于排查）
+  window.__ERR__ = [];
+  window.addEventListener("error", function (e) { window.__ERR__.push(String(e.message || e.error)); });
+  window.addEventListener("unhandledrejection", function (e) { window.__ERR__.push("rejection: " + String(e.reason)); });
+</script>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="page">
+
+  <header class="masthead">
+    <p class="slogan">一千万以内最好的玩具</p>
+    <div class="title-wrap">
+      <h1 class="title">竹知了</h1>
+      <span class="seal">蝉</span>
+      <p class="subtitle">竹间一物 · 搓之成蝉</p>
+    </div>
+    <div class="status-line" id="status-line">按住竹签画圈搓动 · 搓得越快叫得越响</div>
+  </header>
+
+  <main class="layout">
+
+    <section class="stage-wrap">
+      <div class="frame" id="stage">
+        <canvas id="toy"></canvas>
+
+        <div class="hud hud-tl">
+          <span class="chip" id="mode-chip">随意把玩</span>
+          <span class="chip chip-warn" id="shake-chip" hidden>摇一摇已开启</span>
+        </div>
+
+        <div class="hud hud-tr">
+          <button id="btn-shake" class="icon-btn" hidden aria-label="开启摇一摇搓动">📳 开启摇一摇</button>
+          <button id="btn-mute" class="icon-btn" aria-label="静音">🔊</button>
+        </div>
+
+        <div class="hud hud-bl">
+          <div class="rpm-box"><span class="rpm-num cold" id="hud-rpm">0</span><span class="rpm-unit">RPM</span></div>
+          <div class="meter">
+            <div class="meter-track"><div class="meter-fill" id="buzz-meter"></div></div>
+            <span class="meter-label">蝉鸣强度</span>
+          </div>
+        </div>
+
+        <div class="hud hud-br" id="hud-run"></div>
+
+        <div class="toasts" id="toasts"></div>
+
+        <div class="idle-hint" id="idle-hint">
+          <span class="hint-main">按住并绕竹签画圈，把它搓转起来</span>
+          <span class="hint-sub">搓得越快 · 转得越快 · 叫得越响</span>
+        </div>
+      </div>
+      <div class="decoration leaf leaf-a"></div>
+      <div class="decoration leaf leaf-b"></div>
+    </section>
+
+    <aside class="panel">
+      <nav class="mode-tabs" id="mode-tabs">
+        <button class="mode-tab active" data-mode="free">随意把玩</button>
+        <button class="mode-tab" data-mode="buzz">鸣叫挑战</button>
+        <button class="mode-tab" data-mode="rpm">极速挑战</button>
+      </nav>
+
+      <section class="card">
+        <h2 id="challenge-title">随意把玩</h2>
+        <p class="challenge-desc" id="challenge-desc">自由玩耍：画圈搓动竹签，看竹片转得多快、叫得多响。音调与响度随转速实时变化。</p>
+        <div class="ladder" id="ladder"></div>
+        <button class="btn-wood" id="btn-run" hidden>开始挑战</button>
+        <div class="run-state" id="run-state"></div>
+      </section>
+
+      <section class="card">
+        <h2>纪录</h2>
+        <div class="records">
+          <div class="record"><span class="record-label">最长鸣叫</span><span class="record-value" id="rec-buzz">--</span></div>
+          <div class="record"><span class="record-label">最高转速</span><span class="record-value" id="rec-rpm">--</span></div>
+        </div>
+        <button class="link-btn" id="btn-clear-records">清空纪录</button>
+      </section>
+
+      <section class="card">
+        <h2>玩法与原理</h2>
+        <ul class="howto">
+          <li><b>画圈搓动</b>：按住竹签，绕它快速画圈；圈转得越快，竹片转得越快。也可以快速来回拖拽。</li>
+          <li><b>摇一摇</b><span class="mobile-only">（手机）</span>：握紧手机快速摇动，也能把竹签搓起来。</li>
+          <li><b>发声原理</b>：竹片高速旋转切割空气，薄片发生气动颤振——嗡嗡如蝉鸣。转速越高音调越高、声音越响；转速下降，蝉鸣随之衰歇。</li>
+        </ul>
+      </section>
+    </aside>
+
+  </main>
+
+  <footer class="footer">
+    <p>声音由 WebAudio 实时合成 · 无任何预录音频 · 音调与响度由实时转速连续驱动</p>
+    <p class="tiny">竹知了 · 传统竹制玩具仿真 · 记录保存在本机浏览器</p>
+  </footer>
+</div>
+
+<pre id="selftest-output" hidden></pre>
+<script src="js/physics.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/game.js"></script>
+<script src="js/selftest.js"></script>
+</body>
+</html>

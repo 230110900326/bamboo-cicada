@@ -45,7 +45,7 @@
 
   /* ---------- 状态 ---------- */
   const state = {
-    w: 0, theta: 0, t: 0, mode: "free",
+    w: 0, theta: 0, t: 0, mode: "free",        // w = 角速度 (rad/s)
     pointer: { active: false, prevAngle: 0, angVel: 0, lastT: 0, radius: 0 },
     shake: { enabled: false, last: -1, hp: 9.81 },
     run: null,           // { type, time, peak, grace, endsIn, done:Set }
@@ -53,7 +53,7 @@
     best: { buzz: 0, rpm: 0 },
     muted: false,
     dispRpm: 0,
-    dpr: 1, w: 0, h: 0, cx: 0, cy: 0, stickLen: 0, bladeR: 0,
+    dpr: 1, cw: 0, ch: 0, cx: 0, cy: 0, stickLen: 0, bladeR: 0,   // cw/ch = 画布尺寸
   };
   const phi = 0.30, sinP = Math.sin(phi), cosP = Math.cos(phi);
 
@@ -61,12 +61,12 @@
   function resize() {
     const rect = canvas.getBoundingClientRect();
     state.dpr = Math.min(2, window.devicePixelRatio || 1);
-    state.w = rect.width; state.h = rect.height;
+    state.cw = rect.width; state.ch = rect.height;
     canvas.width = Math.max(1, Math.round(rect.width * state.dpr));
     canvas.height = Math.max(1, Math.round(rect.height * state.dpr));
-    state.cx = state.w / 2;
-    state.cy = state.h * 0.60;
-    state.stickLen = Math.min(state.h * 0.36, state.w * 0.34);
+    state.cx = state.cw / 2;
+    state.cy = state.ch * 0.60;
+    state.stickLen = Math.min(state.ch * 0.36, state.cw * 0.34);
     state.bladeR = state.stickLen * 0.45;
   }
   if (window.ResizeObserver) new ResizeObserver(resize).observe(canvas);
@@ -102,7 +102,8 @@
     while (dA > Math.PI) dA -= Math.PI * 2;
     while (dA < -Math.PI) dA += Math.PI * 2;
     st.prevAngle = p.angle;
-    const vel = dA / dT;                          // 手指绕杆角速度 rad/s
+    let vel = dA / dT;                            // 手指绕杆角速度 rad/s
+    if (!Number.isFinite(vel) || Math.abs(vel) > 50) vel = Math.sign(vel || 1) * 50;  // 抗异常尖峰（≈8圈/秒上限）
     const rF = Math.min(1, Math.max(0, (p.radius - 16) / 40));  // 离杆太近的圈几乎无效
     const sm = 0.78;                              // 平滑，抗抖动
     st.angVel = st.angVel * sm + vel * (1 - sm) * rF;
@@ -188,7 +189,8 @@
     state.run = null;
     els.btnRun.disabled = false;
     const isBuzz = run.type === "buzz";
-    const score = isBuzz ? run.time : run.peak;
+    // 统一单位：鸣叫挑战存秒，极速挑战存 RPM（run.peak 已是 RPM）
+    const score = isBuzz ? run.time : Math.round(run.peak);
     const rec = isBuzz ? state.best.buzz : state.best.rpm;
     let msg;
     if (isBuzz) {
@@ -196,9 +198,9 @@
       if (score > rec) { state.best.buzz = score; msg += " · 新纪录！"; }
       else msg += ` · 最佳 ${rec.toFixed(1)} 秒`;
     } else {
-      msg = `峰值转速 ${Math.round(score)} RPM`;
+      msg = `峰值转速 ${score} RPM`;
       if (score > rec) { state.best.rpm = score; msg += " · 新纪录！"; }
-      else msg += ` · 最佳 ${Math.round(rec)} RPM`;
+      else msg += ` · 最佳 ${rec} RPM`;
     }
     saveBest(); updateRecordsUI();
     spawnToast(msg, "result", 3400);
@@ -222,7 +224,7 @@
       }
     } else {
       run.endsIn -= dt;
-      run.peak = Math.max(run.peak, wAbs);
+      run.peak = Math.max(run.peak, rpmFromSpin(wAbs));   // 峰值统一用 RPM 比较/展示
       for (const m of LADDERS.rpm) {
         if (!run.done.has(m.t) && run.peak >= m.t) { run.done.add(m.t); spawnToast(`突破 · ${m.n}（${m.t} RPM）`, "milestone", 2200); renderLadder(); }
       }
@@ -267,6 +269,7 @@
   /* ---------- 主循环 ---------- */
   // 自检模式下不启动 rAF（无头虚拟时间下时序才可控），由自检手动 tick 驱动
   const SELFTEST_MODE = new URLSearchParams(location.search).has("selftest");
+  const NOBLADE = new URLSearchParams(location.search).has("noblade");
   let last = performance.now() / 1000;
   function frame(nowMs) {
     requestAnimationFrame(frame);
@@ -311,9 +314,17 @@
     } else if (state.mode === "free") {
       els.runHud.textContent = state.buzz.on
         ? `连续鸣叫 ${state.buzz.streak.toFixed(1)}s`
-        : (state.buzz.sessionPeak > 0 ? `峰值 ${Math.round(rpmFromSpin(state.buzz.sessionPeak))} RPM` : "");
+        : (state.buzz.sessionPeak > 0 ? `本次峰值 ${Math.round(rpmFromSpin(state.buzz.sessionPeak))} RPM` : "");
     } else {
       els.runHud.textContent = "";
+    }
+
+    // 随意把玩也会实时更新最佳纪录（峰值转速 / 最长鸣叫）
+    if (state.mode === "free") {
+      const peakRpm = Math.round(rpmFromSpin(state.buzz.sessionPeak));
+      if (peakRpm > state.best.rpm) { state.best.rpm = peakRpm; saveBest(); updateRecordsUI(); }
+      const streak = Math.round(state.buzz.streak * 10) / 10;
+      if (streak > state.best.buzz) { state.best.buzz = streak; saveBest(); updateRecordsUI(); }
     }
 
     if (state.buzz.on) setStatus(`蝉鸣中 · ${Math.round(rpm)} RPM`, "on");
@@ -386,9 +397,9 @@
     ctx.beginPath(); ctx.arc(state.cx, state.topY, 3.2, 0, Math.PI * 2); ctx.fill();
   }
   function render() {
-    const { w, h, cx, cy } = state;
+    const { cw, ch, cx, cy } = state;
     ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
-    ctx.clearRect(0, 0, w, h);
+    ctx.clearRect(0, 0, cw, ch);
 
     const len = state.stickLen, R = state.bladeR;
     const topX = cx, topY = cy - len * cosP;
@@ -424,35 +435,39 @@
       ctx.restore();
     }
 
-    // 高速模糊环（竹片高速旋转成"盘"）
+    // 高速模糊环（竹片高速旋转成"盘"，圆心=竹签轴心）
     if (wAbs > 40 && gLvl > 0.03) {
-      const alpha = Math.min(0.42, gLvl * 0.48 + 0.04);
+      const alpha = Math.min(0.45, gLvl * 0.5 + 0.05);
       ctx.save();
       ctx.translate(cx, topY);
       ctx.scale(1, cosP);
       ctx.rotate(state.theta * sign * 0.6);
       ctx.globalAlpha = alpha;
-      const rg = ctx.createRadialGradient(R * 0.5, 0, 2, R * 0.5, 0, R * 1.1);
-      rg.addColorStop(0, "rgba(140,105,45,0)");
-      rg.addColorStop(0.72, "rgba(160,120,55,0.85)");
+      const rg = ctx.createRadialGradient(0, 0, 2, 0, 0, R * 1.05);
+      rg.addColorStop(0, "rgba(140,105,45,0.28)");
+      rg.addColorStop(0.55, "rgba(165,125,60,0.92)");
       rg.addColorStop(1, "rgba(140,105,45,0)");
       ctx.fillStyle = rg;
-      ctx.beginPath(); ctx.arc(R * 0.5, 0, R * 1.1, 0, Math.PI * 2); ctx.fill();
-      ctx.strokeStyle = "rgba(220,190,120,0.8)";
-      ctx.lineWidth = R * 0.07;
+      ctx.beginPath(); ctx.arc(0, 0, R * 1.05, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(230,200,130,0.85)";
+      ctx.lineWidth = R * 0.06;
       ctx.lineCap = "round";
-      for (let k = 0; k < 3; k++) {
-        ctx.beginPath();
-        ctx.arc(R * 0.5, 0, R * 0.78, k * 2.1 + state.t * 9 * sign, k * 2.1 + 1.35 + state.t * 9 * sign);
-        ctx.stroke();
+      if (!NOBLADE) {
+        for (let k = 0; k < 3; k++) {
+          ctx.beginPath();
+          ctx.arc(0, 0, R * 0.8, k * 2.1 + state.t * 9 * sign, k * 2.1 + 1.2 + state.t * 9 * sign);
+          ctx.stroke();
+        }
       }
       ctx.restore();
     }
 
-    // 竹片：位置/颤振抖动随鸣叫强度增强
-    const bladeAlpha = Math.max(0.12, 1 - Math.min(0.88, gLvl * 1.15));
-    const jit = gLvl * (1.6 * Math.sin(state.t * (5 + 26 * gLvl) * Math.PI * 2) + (Math.random() - 0.5) * 1.4);
-    drawBlade(bladeAlpha, jit, state.theta);
+    // 竹片：位置/颤振抖动随鸣叫强度增强（?noblade=1 时跳过，用于验证盘面本身）
+    if (!NOBLADE) {
+      const bladeAlpha = Math.max(0.12, 1 - Math.min(0.88, gLvl * 1.15));
+      const jit = gLvl * (1.6 * Math.sin(state.t * (5 + 26 * gLvl) * Math.PI * 2) + (Math.random() - 0.5) * 1.4);
+      drawBlade(bladeAlpha, jit, state.theta);
+    }
 
     drawStick(topX, topY, botX, botY);
     drawTassel(botX, botY);
@@ -479,8 +494,12 @@
   /* ---------- 启动 ---------- */
   loadBest();
   renderLadder();
-  initShake();
+  if (!SELFTEST_MODE) initShake();   // 自检模式跳过传感器监听（无头环境会伪造传感器事件）
   document.addEventListener("visibilitychange", () => { last = performance.now() / 1000; });
+  // 调试：?spin=260 直接设定初始角速度（无头截图分析用）
+  const spinParam = parseFloat(new URLSearchParams(location.search).get("spin"));
+  if (Number.isFinite(spinParam)) state.w = P.clamp(spinParam, 0, PHYS.maxSpin);
+  state.bootW = state.w;   // 启动快照（调试）
   if (!SELFTEST_MODE) requestAnimationFrame(frame);
 
   /* 调试钩子（自检/自动化验证用） */
@@ -489,9 +508,11 @@
     tick: (dtSec) => { update(dtSec); render(); },   // 自检模式下手动驱动一帧
     getState: () => ({
       w: state.w, theta: state.theta, rpm: rpmFromSpin(state.w), g: buzzLevel(state.w),
+      bootW: state.bootW,
+      angVel: state.pointer.angVel, pointerActive: state.pointer.active,
       cx: state.cx, cy: state.cy, topY: state.topY,
       stickLen: state.stickLen, bladeR: state.bladeR,
-      buzzOn: state.buzz.on, pointerActive: state.pointer.active, mode: state.mode,
+      buzzOn: state.buzz.on, mode: state.mode,
       run: state.run ? { type: state.run.type, time: state.run.time, peak: state.run.peak, endsIn: state.run.endsIn } : null,
     }),
     audio,
